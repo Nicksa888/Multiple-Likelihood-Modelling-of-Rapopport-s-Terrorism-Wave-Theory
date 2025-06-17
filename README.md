@@ -1,4 +1,5 @@
 Spatial Modeling of Terrorism in Rapoport’s Wave Theory
+
 This project uses Bayesian spatial modeling (INLA) to analyze terrorist attacks in the Middle East across the Third (New Left) and Fourth (Religious) Waves of terrorism, as defined by David Rapoport’s Wave Theory. The analysis focuses on two key spatial variables: average travel time to attack sites and distance to international borders. These are modeled jointly using a multiple likelihood framework to assess ideological and operational differences between waves.
 
 Data
