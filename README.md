@@ -23,9 +23,6 @@ Reproducible RMarkdown file with full model code and interpretation
 How to Use
 Clone the repo and open the .Rmd file in RStudio. Run all chunks to reproduce the analysis. Ensure the INLA package is installed.
 
-r
-Copy
-Edit
 install.packages("INLA", repos = "https://inla.r-inla-download.org/R/stable")
 License
 MIT License
