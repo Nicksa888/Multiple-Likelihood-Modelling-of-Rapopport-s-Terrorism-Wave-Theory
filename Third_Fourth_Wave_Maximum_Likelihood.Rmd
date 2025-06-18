@@ -1,0 +1,225 @@
+---
+title: "Multiple Likelihood Modelling of Rapopport's Terrorism Wave Theory"
+author: "Nicholas Bradley"
+date: "2025-06-11"
+output:
+  word_document: default
+  html_document: default
+---
+
+## Introduction
+This analysis applies multiple likelihood modeling using Integrated Nested Laplace Approximations (INLA) to explore the spatial dynamics of terrorist attacks within the framework of Rapoport's Wave Theory. Specifically, we focus on two periods commonly referred to as the Third Wave (dominated by New Left ideologies) and the Fourth Wave (characterized by religious extremism). The models assess the influence of spatial coordinates on two log-transformed response variables: average travel time to attacks and distance to international borders. By jointly modeling these responses with shared spatial covariates, we aim to uncover whether the spatial drivers of terrorist behavior differ significantly between ideological waves, thereby offering quantitative insight into Rapoport's historical typology.
+
+```{r, include=FALSE}
+##################
+# Load Libraries #
+##################
+library(INLA)
+library(dplyr)
+library(nortest)
+```
+
+## Data Set Characteristics
+
+The dataset is a spatially referenced collection of terrorist incident-level observations from the Middle East, likely used for modeling the spatial behavior of attacks within Rapoport’s Wave Theory framework. It contains four key variables:
+
+xcoord: This is a numeric variable representing the longitudinal coordinate of each attack location. Values range approximately from 32.75 to 57.25, covering the Middle Eastern geographical span from the eastern Mediterranean through to Iran and the Gulf region.
+
+ycoord: This variable captures the latitudinal coordinate of each attack, with values ranging from about 30.25 to 39.75. This suggests the dataset includes incidents across much of the Middle East’s north-south extent, including countries like Iraq, Syria, Jordan, and the Arabian Peninsula.
+
+Travel_Time_Average: A continuous variable indicating the travel time in minutes from the nearest city to the attack site. This variable serves as a proxy for logistical effort or distance of operational reach.
+
+B_Dist_km: This numeric variable measures the straight-line distance in kilometers from each attack site to the nearest international border. It quantifies how spatially embedded or peripheral an attack was, potentially reflecting strategic decisions related to cross-border access or escape.
+
+Together, the dataset enables the analysis of how spatial location—both in terms of absolute position and relative proximity to infrastructure or borders—influences terrorist behavior. The granularity of the coordinates combined with operational measures like travel time and border distance makes the data especially suitable for geostatistical modeling and comparative spatial analysis across ideological waves of terrorism.
+
+
+```{r, include=FALSE}
+#############
+# Load Data #
+#############
+GTD_Final <- read.csv("C:/R Portfolio/INLA_Modelling/GTD_Final_15_05_25.csv")
+
+MENA <- GTD_Final %>% filter(Region == "Middle East & North Africa")
+```
+
+## Third Wave
+
+The Third Wave dataset comprises attacks attributed to groups associated with the New Left ideological framework. We filtered the Middle Eastern subset (ME_TW) and constructed a stacked dataset to jointly model the log-transformed average travel time (log_tt) and log-transformed border distance (log_b_dist). Each response variable is modeled with its own covariates, allowing for differentiated spatial effects.
+
+The results from the INLA model estimate how each spatial coordinate (longitude and latitude) relates to the response variables. By assigning unique covariates for each outcome (e.g., x_tt for travel time and x_bd for border distance), the model captures potentially distinct geographic influences on logistical planning versus border-related considerations. The use of a multiple likelihood framework enables the simultaneous estimation of two likelihoods under a common spatial structure, which is particularly appropriate given the interdependence of travel time and geopolitical positioning.
+
+The model output for the Third Wave reveals how left-wing terrorist operations were spatially organized and potentially constrained. For instance, a significant positive or negative coefficient on x_tt or y_tt may indicate that certain regions consistently exhibited longer operational reach, suggesting strategic depth or urban targeting preferences. Conversely, strong associations in the log_b_dist component may point to a tactical emphasis on proximity to state boundaries, possibly for purposes of cross-border escape, training, or logistics.
+
+```{r echo = FALSE}
+
+ME_TW <- MENA %>% filter(New_Left_Wave == 1)
+# Select specific variables #
+ME_TW_Select <- ME_TW %>% select(xcoord, ycoord, Travel_Time_Average, B_Dist_km)
+glimpse(ME_TW_Select)
+```
+
+```{r echo = FALSE}
+# Log-transform border distance (add 1 to avoid log(0))
+ME_TW_Select$log_tt <- log(ME_TW_Select$Travel_Time_Average + 1)
+ME_TW_Select$log_b_dist <- log(ME_TW_Select$B_Dist_km + 1)
+```
+
+
+```{r echo = FALSE}
+# Number of observations
+n <- nrow(ME_TW_Select)
+
+# Stack the response
+Y <- c(ME_TW_Select$log_tt, ME_TW_Select$log_b_dist)
+
+# Define a group indicator: 1 = log_tt, 2 = log_b_dist
+response_group <- rep(c("log_tt", "log_b_dist"), each = n)
+
+# Duplicate covariates
+xcoord <- rep(ME_TW_Select$xcoord, 2)
+ycoord <- rep(ME_TW_Select$ycoord, 2)
+
+# Create group-specific covariates using interaction
+x_tt <- ifelse(response_group == "log_tt", xcoord, NA)
+x_bd <- ifelse(response_group == "log_b_dist", xcoord, NA)
+y_tt <- ifelse(response_group == "log_tt", ycoord, NA)
+y_bd <- ifelse(response_group == "log_b_dist", ycoord, NA)
+
+# Create the stacked dataframe
+stacked_df <- data.frame(
+  Y = Y,
+  response_group = response_group,
+  x_tt = x_tt,
+  y_tt = y_tt,
+  x_bd = x_bd,
+  y_bd = y_bd
+)
+
+# Fit the model: separate formulas for each response via grouped covariates
+model <- inla(
+  Y ~ -1 + 
+    f(response_group, model = "iid", hyper = list(prec = list(initial = 10, fixed = TRUE))) +  # group-specific intercepts
+    x_tt + y_tt + x_bd + y_bd,
+  family = "gaussian",
+  data = stacked_df,
+  control.predictor = list(compute = TRUE),
+  control.compute = list(dic = TRUE, waic = TRUE)
+)
+
+# View summary
+summary(model)
+
+```
+
+## Third Wave Findings
+
+The results of the Third Wave model, estimated using INLA with a multiple likelihood Gaussian structure, provide clear insights into the spatial behavior of terrorist attacks in the Middle East and North Africa during the New Left period of Rapoport’s Wave Theory. The model jointly estimates two log-transformed outcomes: travel time to the nearest city (log_tt) and distance to the nearest international border (log_b_dist), using separate spatial covariates for each response. A group-specific intercept is included using an IID model on the response_group factor, which distinguishes the two responses.
+
+All fixed effects in the model are positive and statistically significant, indicating that both eastward and northward spatial shifts are associated with increased remoteness. Specifically, as longitude increases, travel time to cities also increases (𝛽=0.010, 95% CI: [0.007, 0.013]), suggesting that attacks further east tend to occur in more remote areas with less urban access. Latitude has an even stronger influence on travel time (𝛽=
+0.113, 95% CI: [0.110, 0.115]), indicating that attacks situated further north are also more distant from urban centers, perhaps due to sparse infrastructure or more rugged terrain. The border distance component shows similar trends: attacks located further east (𝛽=0.067) and north (𝛽=0.086) are more distant from international boundaries, which may reflect strategic positioning in interior zones where state oversight is reduced.
+
+These findings have important implications for understanding Third Wave terrorism. Groups associated with the New Left frequently emphasized revolutionary struggle and domestic regime change, often operating within national borders and targeting state institutions. The spatial patterns observed in the model are consistent with this ideological orientation. Rather than relying on cross-border operations or external sanctuaries, Third Wave actors in the MENA region appear to have operated from within, often from regions that were more remote—either by choice, to avoid detection, or by necessity, due to state repression in urban cores. The modest but consistent spatial gradients observed in both travel time and border distance suggest that while Third Wave attacks were ideologically centralized, they were logistically shaped by geographic remoteness and infrastructure availability.
+
+Overall, this model illustrates how the geographic expression of Third Wave terrorism was structured by both political intent and spatial constraint. It supports Rapoport’s characterization of the Third Wave as revolutionary and domestically focused, but also reveals the underlying spatial realities that shaped where and how those ideological commitments were carried out.
+
+## Fourth Wave
+
+The Fourth Wave focuses on terrorist attacks carried out by religiously motivated groups, primarily Islamist actors, active in the Middle East. Using the same modeling framework, we created a stacked dataset for the Fourth Wave subset (ME_FW). As in the Third Wave model, we included group-specific covariates to account for the differing spatial effects on the two log-transformed responses.
+
+Religious wave actors have often been theorized to differ substantially in their spatial and operational behavior, prioritizing symbolic targets and operating from loosely governed border regions. The INLA results for this wave are expected to shed light on whether the influence of geographic location—both in terms of internal travel infrastructure and external border proximity—mirrors or diverges from that of the Third Wave.
+
+By comparing the estimated coefficients across waves, we can determine whether, for instance, border proximity played a more prominent role in religious attacks, possibly due to sanctuary-seeking across borders or access to transnational ideological networks. Similarly, a stronger or weaker spatial gradient in travel time might suggest varying logistical sophistication or levels of territorial control.
+
+```{r echo = FALSE}
+
+ME_FW <- MENA %>% filter(Religious_Wave == 1)
+# Select specific variables #
+ME_FW_Select <- ME_FW %>% select(xcoord, ycoord, Travel_Time_Average, B_Dist_km)
+glimpse(ME_FW_Select)
+```
+
+```{r echo = FALSE}
+# Log-transform border distance (add 1 to avoid log(0))
+ME_FW_Select$log_tt <- log(ME_FW_Select$Travel_Time_Average + 1)
+ME_FW_Select$log_b_dist <- log(ME_FW_Select$B_Dist_km + 1)
+```
+
+
+```{r echo = FALSE}
+# Number of observations
+FW_n <- nrow(ME_FW_Select)
+
+# Stack the response
+FW_Y <- c(ME_FW_Select$log_tt, ME_FW_Select$log_b_dist)
+
+# Define a group indicator: 1 = log_tt, 2 = log_b_dist
+FW_response_group <- rep(c("log_tt", "log_b_dist"), each = FW_n)
+
+# Duplicate covariates
+FW_xcoord <- rep(ME_FW_Select$xcoord, 2)
+FW_ycoord <- rep(ME_FW_Select$ycoord, 2)
+
+# Create group-specific covariates using interaction
+FW_x_tt <- ifelse(FW_response_group == "log_tt", FW_xcoord, NA)
+FW_x_bd <- ifelse(FW_response_group == "log_b_dist", FW_xcoord, NA)
+FW_y_tt <- ifelse(FW_response_group == "log_tt", FW_ycoord, NA)
+FW_y_bd <- ifelse(FW_response_group == "log_b_dist", FW_ycoord, NA)
+
+# Create the stacked dataframe
+FW_stacked_df <- data.frame(
+  FW_Y = FW_Y,
+  FW_response_group = FW_response_group,
+  FW_x_tt = FW_x_tt,
+  FW_y_tt = FW_y_tt,
+  FW_x_bd = FW_x_bd,
+  FW_y_bd = FW_y_bd
+)
+
+# Fit the model: separate formulas for each response via grouped covariates
+FW_model <- inla(
+  FW_Y ~ -1 + 
+    f(FW_response_group, model = "iid", hyper = list(prec = list(initial = 10, fixed = TRUE))) +  # group-specific intercepts
+    FW_x_tt + FW_y_tt + FW_x_bd + FW_y_bd,
+  family = "gaussian",
+  data = FW_stacked_df,
+  control.predictor = list(compute = TRUE),
+  control.compute = list(dic = TRUE, waic = TRUE)
+)
+
+# View summary
+summary(FW_model)
+
+```
+
+## Fourth Wave Findings
+
+The Fourth Wave model estimates the geographic behavior of religiously motivated terrorist attacks across the Middle East and North Africa by jointly modeling two continuous spatial outcomes: travel time to the nearest city (log_tt) and distance to the nearest international border (log_b_dist). Using a multiple likelihood structure, each response is modeled with separate spatial covariates for longitude (xcoord) and latitude (ycoord). Group-specific intercepts are included via an IID random effect, allowing the model to differentiate between the two responses while identifying common spatial patterns.
+
+The fixed effects reveal pronounced spatial structuring in the data. The coefficient for longitude on travel time (FW_x_tt = 0.050) indicates that attacks further east are associated with significantly longer travel times, while the positive latitude effect (FW_y_tt = 0.070) suggests that attacks further north are also more remote from urban centers. The distance-to-border component shows an even stronger eastward effect (FW_x_bd = 0.190), implying that eastern attacks occur far from international borders. Interestingly, the latitude effect for border distance is negative (FW_y_bd = -0.046), indicating that northern attacks tend to occur closer to borders. All effects are highly statistically significant, with narrow confidence intervals and virtually zero uncertainty, underscoring the consistency and robustness of these spatial trends.
+
+These results reflect a clear operational geography for Fourth Wave terrorism in the region. Unlike Third Wave actors, who often operated in proximity to urban centers and within established national territories, Fourth Wave groups appear to have favored more remote, eastern, and in some cases, northern geographies. This is consistent with the strategic logic of many religious terrorist groups—particularly jihadist actors—who have sought refuge in under-governed territories, borderlands, and peripheral regions to evade state control and consolidate ideological space. The strong spatial separation from cities and borders may also reflect an operational strategy centered on territorial consolidation and recruitment from marginal communities, as seen in the case of ISIS in eastern Syria and western Iraq.
+
+Model fit metrics further reinforce the validity of these patterns. The DIC (196,109.88) and WAIC (196,118.95) values indicate a reasonable model fit for a large and complex dataset, with an effective number of parameters around 5–14, suggesting a balance between model flexibility and parsimony. Overall, the Fourth Wave model demonstrates that religious terrorism in the MENA region is not just ideologically distinct from previous waves, but also geographically differentiated. These spatial dynamics underscore how the Fourth Wave is deeply embedded in a terrain of remoteness, peripheral sanctuaries, and borderland insurgency, providing empirical support for the notion that the religious wave reflects not only a new ideology but also a fundamentally different relationship to space and state power.
+
+## Comparative Analysis
+
+The application of maximum likelihood INLA modeling across the Third and Fourth Waves of terrorism in the MENA region offers valuable insight into the evolving spatial logics of terrorist operations. Both models employ a dual-response framework, jointly estimating travel time to urban centers (log_tt) and distance to international borders (log_b_dist) as functions of spatial covariates (longitude and latitude). Each wave’s model includes separate intercepts for the responses via an IID random effect, allowing for flexibility in capturing latent group-specific variation.
+
+In the Third Wave model, all spatial covariates were statistically significant, but the magnitudes of their effects were relatively modest. Longitude (x_tt = 0.010) and latitude (y_tt = 0.113) exerted influence on travel time, suggesting that Third Wave attacks tended to occur slightly more in the east and north of the region. Similarly, for border distance, both longitude (x_bd = 0.067) and latitude (y_bd = 0.086) were positively associated, indicating a general trend of Third Wave attacks occurring further inland and slightly removed from borders, but not radically so. The overall picture that emerges is one of moderate remoteness—consistent with the Third Wave's emphasis on urban guerrilla tactics, revolutionary insurgency, and proximity to state targets, often in conflict zones or contested spaces rather than deep peripheries.
+
+In contrast, the Fourth Wave model reveals more distinct and sharper spatial patterns. Longitude retains a positive effect on both responses (FW_x_tt = 0.050, FW_x_bd = 0.190), but these values are notably higher than in the Third Wave, suggesting that Fourth Wave attacks were more likely to occur significantly further east. Latitude continues to positively predict travel time (FW_y_tt = 0.070), indicating northern concentration, but notably exhibits a negative relationship with border distance (FW_y_bd = -0.046). This shift implies that, unlike their predecessors, Fourth Wave actors—particularly jihadist groups—were more active in northern territories near international borders. This supports the notion that religiously motivated terrorist organizations, especially in the post-9/11 era, have exploited peripheral and transborder sanctuaries as operational bases. These areas are often characterized by weak state control, ethnic or sectarian enclaves, and strategic depth, allowing groups to mobilize, train, and launch attacks with relative impunity.
+
+Model diagnostics support the empirical distinction between the waves. While the Third Wave model achieves a DIC of 27,108.80 and WAIC of 27,113.80, the Fourth Wave model, despite its much larger sample size, reports a substantially higher DIC (196,109.88) and WAIC (196,118.95). The higher values are consistent with greater heterogeneity and complexity in Fourth Wave spatial dynamics, particularly given the larger number of observations and greater effective number of parameters.
+
+Taken together, the analysis affirms that while both waves show sensitivity to spatial factors, the Third Wave reflects a more nationally grounded insurgent geography, often urban-centric and strategically positioned within contested states. By contrast, the Fourth Wave is distinguished by a transnational insurgent logic, marked by increased remoteness, deeper eastward movement, and a preference for marginal or borderland zones. This transition mirrors the broader theoretical trajectory of Rapoport’s wave theory, highlighting a shift from secular-nationalist rebellion to religiously motivated insurgency, but importantly, it also shows how spatial behavior is integral to this ideological evolution.
+
+##  Conclusion
+
+This analysis has demonstrated that spatial modeling using INLA provides a rigorous and interpretable framework for quantifying how the geographical footprint of terrorism varies across ideological waves. By modeling two spatial outcomes—travel time to urban centers and distance to international borders—as functions of longitude and latitude, we uncovered distinct spatial signatures for the Third and Fourth Waves of terrorism in the Middle East and North Africa.
+
+The Third Wave, associated with New Left ideologies, exhibited a pattern of attacks occurring moderately inland and away from borders, reflecting a revolutionary agenda grounded in domestic political transformation. These groups appeared to favor spatial positions that balanced logistical accessibility with strategic remoteness, likely due to both ideological targeting and operational constraints.
+
+In contrast, the Fourth Wave, characterized by religious extremism, displayed a markedly different spatial logic. Attacks were more frequently situated further east and in closer proximity to northern borders, indicating a deliberate engagement with borderland zones and peripheral territories. This reflects both the operational need for sanctuary and the transnational orientation of many religious terrorist organizations, who often exploit weakly governed spaces for mobilization and expansion.
+
+These findings quantitatively affirm Rapoport’s theoretical distinction between ideological waves while also expanding it by revealing how each wave manifests distinct spatial behaviors. In doing so, the analysis underscores the value of geostatistical methods in terrorism research and highlights the centrality of space—not merely ideology or tactics—in shaping the evolution of global terrorism over time. Future research could extend this framework by incorporating additional contextual variables, such as terrain, population density, or counterterrorism pressure, to further refine our understanding of how terrorists choose their geographic domains.
